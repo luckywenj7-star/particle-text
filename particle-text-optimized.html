@@ -174,7 +174,7 @@
     </div>
 
     <!-- 隐藏的音频播放器 -->
-    <audio id="bgMusic" loop preload="auto"></audio>
+    <audio id="bgMusic" loop preload="auto" playsinline webkit-playsinline></audio>
 
     <!-- 音乐控制按钮 -->
     <button id="musicToggle" style="position: fixed; bottom: 20px; right: 20px; z-index: 100; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px; backdrop-filter: blur(8px);">
@@ -290,18 +290,18 @@
                     const dy = this.y - mouse.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
-                    // 鼠标交互逻辑
+                    // 鼠标/触摸交互逻辑 - 点击时弹动效果
                     if (distance < mouse.radius && distance > 0) {
                         const forceDirectionX = dx / distance;
                         const forceDirectionY = dy / distance;
                         const force = (mouse.radius - distance) / mouse.radius;
-                        const push = force * 4;
+                        const push = force * 5;
 
                         this.vx += forceDirectionX * push;
                         this.vy += forceDirectionY * push;
 
-                        // 鼠标靠近时增加发光
-                        this.glowIntensity = Math.max(this.glowIntensity, force * 0.4);
+                        // 触摸/点击时增强发光和弹动效果
+                        this.glowIntensity = Math.max(this.glowIntensity, force * 0.6);
                     }
 
                     // 弹簧力
@@ -586,17 +586,23 @@
             offScreenCtx.clearRect(0, 0, offScreenCanvas.width, offScreenCanvas.height);
 
             const chars = Array.from(text);
-            const charCount = text.length;
+            const charCount = chars.length; // 使用实际字符数量而非UTF-16长度
 
             // 检测是否有emoji
             const hasEmoji = chars.some(c => isEmoji(c));
 
-            // 计算字体大小 - 保证文字不被压缩
+            // 检测手机端
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+            // 计算字体大小 - 保证文字不被压缩，保证足够粒子数量
             let fontSize;
             if (hasEmoji) {
-                fontSize = Math.max(48, Math.min(100, width / charCount * 0.9));
+                fontSize = Math.max(40, Math.min(80, width / charCount * 0.9));
             } else {
-                fontSize = Math.max(48, Math.min(140, width / charCount * 1.0));
+                // 手机端字体保持较大，确保粒子够多
+                fontSize = isMobile
+                    ? Math.max(48, Math.min(120, width / charCount * 1.5))
+                    : Math.max(48, Math.min(140, width / charCount * 1.0));
             }
 
             // 测量每个字符的位置 - emoji使用系统字体
@@ -650,8 +656,8 @@
             const imageData = offScreenCtx.getImageData(0, 0, width, height).data;
             const newTargets = [];
 
-            // 采样步长
-            const sampleStep = hasEmoji ? 3 : 5;
+            // 采样步长 - 手机端减小步长增加粒子密度
+            const sampleStep = hasEmoji ? 3 : (isMobile ? 3 : 5);
 
             // 重新遍历每个字符位置进行采样
             currentX = startX;
@@ -762,7 +768,15 @@
             mouse.y = -1000;
         });
 
-        // 触屏支持
+        // 触屏支持 - 点击时粒子弹动效果而非停顿
+        let touchTimeout;
+        canvas.addEventListener('touchstart', (e) => {
+            clearTimeout(touchTimeout);
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        }, { passive: false });
+
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
@@ -771,8 +785,11 @@
         }, { passive: false });
 
         canvas.addEventListener('touchend', () => {
-            mouse.x = -1000;
-            mouse.y = -1000;
+            // 延迟清除，让粒子有弹回时间
+            touchTimeout = setTimeout(() => {
+                mouse.x = -1000;
+                mouse.y = -1000;
+            }, 150);
         });
 
         // 文字输入事件
@@ -843,6 +860,22 @@
             console.warn('⚠️ 音乐文件加载失败，请检查 bgm.mp3 是否存在');
             musicToggle.textContent = '❌ 文件未找到';
         });
+
+        // 移动端音频中断恢复
+        const tryResume = () => {
+            if (musicPlaying && bgMusic.paused) {
+                bgMusic.play().catch(() => {});
+            }
+        };
+
+        bgMusic.addEventListener('pause', tryResume);
+        bgMusic.addEventListener('suspend', tryResume);
+        bgMusic.addEventListener('stalled', tryResume);
+        bgMusic.addEventListener('waiting', tryResume);
+
+        // 页面可见性变化时恢复音频
+        document.addEventListener('visibilitychange', tryResume);
+        document.addEventListener('resume', tryResume);
 
         // 音量控制
         volumeSlider.addEventListener('input', (e) => {
