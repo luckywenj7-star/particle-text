@@ -177,7 +177,7 @@
     <audio id="bgMusic" loop preload="auto" playsinline webkit-playsinline></audio>
 
     <!-- 音乐控制按钮 -->
-    <button id="musicToggle" style="position: fixed; bottom: 20px; right: 20px; z-index: 100; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px; backdrop-filter: blur(8px);">
+    <button id="musicToggle" style="position: fixed; bottom: 20px; right: 20px; z-index: 100; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); padding: 12px 20px; border-radius: 25px; cursor: pointer; font-size: 14px; backdrop-filter: blur(8px); min-height: 44px; min-width: 100px;">
         🔇 启动音乐
     </button>
 
@@ -597,11 +597,11 @@
             // 计算字体大小 - 保证文字不被压缩，保证足够粒子数量
             let fontSize;
             if (hasEmoji) {
-                fontSize = Math.max(40, Math.min(80, width / charCount * 0.9));
+                fontSize = Math.max(48, Math.min(90, width / charCount * 1.0));
             } else {
-                // 手机端字体保持较大，确保粒子够多
+                // 手机端字体保持较大，确保文字清晰可见不遮挡
                 fontSize = isMobile
-                    ? Math.max(48, Math.min(120, width / charCount * 1.5))
+                    ? Math.max(56, Math.min(140, width / charCount * 1.8))
                     : Math.max(48, Math.min(140, width / charCount * 1.0));
             }
 
@@ -826,6 +826,7 @@
         bgMusic.src = './bgm.mp3';
         bgMusic.volume = 0.3;
         bgMusic.crossOrigin = 'anonymous';
+        bgMusic.muted = false;
 
         // 音乐播放状态
         let musicPlaying = false;
@@ -835,13 +836,17 @@
             e.stopPropagation();
             if (!musicPlaying) {
                 try {
+                    // 手机端需要先设置音量再播放
+                    bgMusic.volume = volumeSlider.value / 100;
                     await bgMusic.play();
                     musicPlaying = true;
                     musicToggle.textContent = '🔊 音乐ON';
                     musicToggle.style.background = 'rgba(100, 200, 150, 0.2)';
+                    showNotification('🎵 音乐已启动');
                 } catch (err) {
                     console.warn('播放失败:', err);
                     musicToggle.textContent = '❌ 播放失败';
+                    showNotification('❌ 音乐播放失败');
                 }
             } else {
                 bgMusic.pause();
@@ -851,14 +856,37 @@
             }
         });
 
+        // 首次用户交互时解锁音频上下文（手机端必需）
+        document.addEventListener('touchstart', async () => {
+            if (!musicPlaying) {
+                try {
+                    bgMusic.volume = volumeSlider.value / 100;
+                    await bgMusic.play();
+                    musicPlaying = true;
+                    musicToggle.textContent = '🔊 音乐ON';
+                    musicToggle.style.background = 'rgba(100, 200, 150, 0.2)';
+                } catch (err) {
+                    // 忽略，静默处理
+                }
+            }
+        }, { once: true });
+
         // 加载状态检测
         bgMusic.addEventListener('canplay', () => {
             console.log('✓ 音乐已加载');
+            musicToggle.textContent = '🔇 启动音乐';
         });
 
         bgMusic.addEventListener('error', (e) => {
-            console.warn('⚠️ 音乐文件加载失败，请检查 bgm.mp3 是否存在');
+            console.warn('⚠️ 音乐文件加载失败:', e);
             musicToggle.textContent = '❌ 文件未找到';
+            showNotification('❌ 音乐文件未找到');
+        });
+
+        bgMusic.addEventListener('ended', () => {
+            // 循环播放
+            bgMusic.currentTime = 0;
+            bgMusic.play().catch(() => {});
         });
 
         // 移动端音频中断恢复
@@ -869,13 +897,23 @@
         };
 
         bgMusic.addEventListener('pause', tryResume);
-        bgMusic.addEventListener('suspend', tryResume);
+        bgMusic.addEventListener('suspend', () => {
+            // 手机端音频被挂起时，尝试恢复
+            setTimeout(() => {
+                if (musicPlaying && bgMusic.paused) {
+                    bgMusic.play().catch(() => {});
+                }
+            }, 100);
+        });
         bgMusic.addEventListener('stalled', tryResume);
         bgMusic.addEventListener('waiting', tryResume);
 
         // 页面可见性变化时恢复音频
-        document.addEventListener('visibilitychange', tryResume);
-        document.addEventListener('resume', tryResume);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && musicPlaying) {
+                tryResume();
+            }
+        });
 
         // 音量控制
         volumeSlider.addEventListener('input', (e) => {
