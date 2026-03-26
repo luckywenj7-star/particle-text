@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵动名字粒子与烟雾效果</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #080a10;
+            overflow: hidden;
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            color: #eee;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 20px 30px;
+            border-radius: 20px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+            text-align: center;
+            width: 260px;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .color-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        input[type="color"] {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            background: none;
+            padding: 2px;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.3);
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 5px;
+        }
+
+        .audio-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 8px;
+        }
+
+        #volumeSlider {
+            cursor: pointer;
+            accent-color: rgba(168, 216, 255, 0.8);
+        }
+
+        #volumeValue {
+            min-width: 30px;
+        }
+
+        @keyframes glow-pulse {
+            0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3)); }
+            50% { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.6)); }
+        }
+
+        /* 通知弹窗 */
+        .notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(50, 50, 50, 0.95);
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .notification.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 通知弹窗 -->
+    <div id="notification" class="notification"></div>
+
+    <div class="controls">
+        <div class="input-group">
+            <input type="text" id="textInput" value="您的名字" placeholder="输入名字..." autocomplete="off" maxlength="10">
+        </div>
+        <div class="color-group">
+            <label for="colorInput">粒子颜色：</label>
+            <input type="color" id="colorInput" value="#8ca3a3">
+            <span id="colorStatus">随姓名生成</span>
+        </div>
+        <div class="info-text">粒子数量: <span id="particleCount">0</span></div>
+        <div class="audio-control">
+            <label for="volumeSlider">音量：</label>
+            <input type="range" id="volumeSlider" min="0" max="100" value="30" style="width: 100px;">
+            <span id="volumeValue">30%</span>
+        </div>
+    </div>
+
+    <!-- 隐藏的音频播放器 -->
+    <audio id="bgMusic" loop preload="auto"></audio>
+
+    <!-- 音乐控制按钮 -->
+    <button id="musicToggle" style="position: fixed; bottom: 20px; right: 20px; z-index: 100; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.7); padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 12px; backdrop-filter: blur(8px);">
+        🔇 启动音乐
+    </button>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const textInput = document.getElementById('textInput');
+        const colorInput = document.getElementById('colorInput');
+        const colorStatus = document.getElementById('colorStatus');
+        const particleCountDisplay = document.getElementById('particleCount');
+
+        let width, height;
+        let particles = [];
+        let smokeParticles = [];
+        let isUserColorSet = false;
+        let offScreenCanvas = null;
+        let offScreenCtx = null;
+
+        const defaultPalette = [
+            // 低饱和唯美色系
+            '#B8A69E', '#C4B7CB', '#9098B6', '#748B9C', '#8CA3A3', '#E1D3C1',
+            '#D4B6A0', '#C9B8A8', '#A8C4C4', '#9DB5C8', '#B8A8B8', '#C8B8A0',
+            '#B5C4B5', '#D0C4B8', '#C4B8C4', '#A8B8C0', '#B8C4C4', '#C4C8B8',
+            '#A8B0C0', '#C0B8A8', '#B0C4B8', '#C8B4B4', '#B4C8C4', '#C8C4B4',
+            '#D4C4B0', '#C4D4C4', '#B4C8D4', '#D4B8C4', '#C8D4B8', '#B8D4C8',
+            '#A0B8C8', '#C8A8B0', '#B0C8A8', '#A8C0B8', '#C4B4C8', '#C8C0B4'
+        ];
+
+        const mouse = {
+            x: -1000,
+            y: -1000,
+            radius: 130
+        };
+
+        /**
+         * 粒子类 - 代表文字形成的单个粒子
+         */
+        class Particle {
+            constructor(x, y, color) {
+                // 目标位置
+                this.baseX = x + (Math.random() - 0.5) * 8;
+                this.baseY = y + (Math.random() - 0.5) * 8;
+
+                // 初始位置 - 从屏幕边缘或随机位置开始
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 200 + 100;
+                this.x = width / 2 + Math.cos(angle) * distance;
+                this.y = height / 2 + Math.sin(angle) * distance;
+
+                this.vx = 0;
+                this.vy = 0;
+                this.size = Math.random() * 2 + 0.5;
+                this.maxSize = this.size;
+                this.color = color;
+
+                this.angle = Math.random() * Math.PI * 2;
+                this.angleSpeed = Math.random() * 0.015 + 0.005;
+                this.orbitRadius = Math.random() * 6 + 2;
+                this.friction = 0.92;
+                this.ease = Math.random() * 0.01 + 0.01;
+
+                // 聚合相关参数
+                this.isAggregating = true; // 是否在聚合中
+                this.aggregationDuration = Math.random() * 800 + 400; // 聚合时长 400-1200ms
+                this.aggregationStartTime = Date.now();
+                this.aggregationEase = 0.08; // 聚合时的缓动强度
+                this.glowIntensity = 0; // 发光强度
+            }
+
+            update() {
+                const currentTime = Date.now();
+                const elapsedTime = currentTime - this.aggregationStartTime;
+                const aggregationProgress = Math.min(elapsedTime / this.aggregationDuration, 1);
+
+                if (this.isAggregating && aggregationProgress < 1) {
+                    // 聚合阶段 - 使用缓动函数实现平滑聚合
+                    const easeProgress = this.easeInOutCubic(aggregationProgress);
+
+                    // 向目标位置移动
+                    const dx = this.baseX - this.x;
+                    const dy = this.baseY - this.y;
+
+                    this.vx = dx * this.aggregationEase;
+                    this.vy = dy * this.aggregationEase;
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // 聚合时增强发光效果
+                    this.glowIntensity = Math.sin(easeProgress * Math.PI) * 0.6;
+                    this.size = this.maxSize * (0.6 + easeProgress * 0.4);
+                } else {
+                    // 聚合完成后的正常动画
+                    if (this.isAggregating) {
+                        this.isAggregating = false;
+                        this.x = this.baseX;
+                        this.y = this.baseY;
+                    }
+
+                    this.angle += this.angleSpeed;
+                    const floatX = Math.cos(this.angle) * this.orbitRadius;
+                    const floatY = Math.sin(this.angle) * this.orbitRadius;
+
+                    const targetX = this.baseX + floatX;
+                    const targetY = this.baseY + floatY;
+
+                    const dx = this.x - mouse.x;
+                    const dy = this.y - mouse.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    // 鼠标交互逻辑
+                    if (distance < mouse.radius && distance > 0) {
+                        const forceDirectionX = dx / distance;
+                        const forceDirectionY = dy / distance;
+                        const force = (mouse.radius - distance) / mouse.radius;
+                        const push = force * 4;
+
+                        this.vx += forceDirectionX * push;
+                        this.vy += forceDirectionY * push;
+
+                        // 鼠标靠近时增加发光
+                        this.glowIntensity = Math.max(this.glowIntensity, force * 0.4);
+                    }
+
+                    // 弹簧力
+                    const pullX = targetX - this.x;
+                    const pullY = targetY - this.y;
+
+                    this.vx += pullX * this.ease;
+                    this.vy += pullY * this.ease;
+
+                    // 应用摩擦力
+                    this.vx *= this.friction;
+                    this.vy *= this.friction;
+
+                    // 更新位置
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // 缓慢恢复发光强度
+                    this.glowIntensity *= 0.95;
+
+                    this.size = this.maxSize;
+                }
+
+                // 边界检查
+                this.x = Math.max(-50, Math.min(width + 50, this.x));
+                this.y = Math.max(-50, Math.min(height + 50, this.y));
+            }
+
+            /**
+             * 缓动函数 - 三次方的缓入缓出
+             */
+            easeInOutCubic(t) {
+                return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            }
+
+            draw() {
+                ctx.save();
+
+                // 简洁的发光效果 - 单层光晕
+                if (this.glowIntensity > 0.02) {
+                    const rgb = hexToRgb(this.color);
+                    const glowAlpha = this.glowIntensity * 0.25;
+
+                    // 柔和的单层光晕
+                    ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowAlpha})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // 核心粒子
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 细致的边界描边
+                const rgb = hexToRgb(this.color);
+                ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.5 + this.glowIntensity * 0.2})`;
+                ctx.lineWidth = 1 + this.glowIntensity * 0.5;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        /**
+         * 烟雾光圈类 - 背景随机漂浮的柔和光晕
+         */
+        class Smoke {
+            constructor() {
+                // 随机位置（分布在画布上，但避开边缘）
+                this.x = Math.random() * width * 0.6 + width * 0.2;
+                this.y = Math.random() * height * 0.6 + height * 0.2;
+
+                // 随机大小 80-250
+                this.baseSize = Math.random() * 170 + 80;
+                this.size = this.baseSize;
+
+                // 极缓慢的漂移速度
+                this.vx = (Math.random() - 0.5) * 0.15;
+                this.vy = (Math.random() - 0.5) * 0.1;
+
+                // 透明度控制 - 柔和的呼吸效果
+                this.alpha = 0;
+                this.maxAlpha = Math.random() * 0.06 + 0.04; // 0.04-0.10
+                this.breathSpeed = Math.random() * 0.0008 + 0.0004; // 呼吸速度
+                this.breathOffset = Math.random() * Math.PI * 2; // 随机相位
+
+                // 轻微的大小波动
+                this.sizeBreathSpeed = Math.random() * 0.0005 + 0.0002;
+                this.sizeBreathAmount = Math.random() * 20 + 10; // 大小波动幅度
+
+                // 颜色基调 - 柔和的蓝紫/暖白
+                const hue = Math.random() > 0.5 ? 220 : 30; // 蓝色或暖色
+                const sat = Math.random() * 20 + 10;
+                const light = Math.random() * 15 + 80;
+                this.color = `hsl(${hue}, ${sat}%, ${light}%)`;
+            }
+
+            update() {
+                // 极缓的位置漂移，边界反弹
+                this.x += this.vx;
+                this.y += this.vy;
+
+                if (this.x < width * 0.1 || this.x > width * 0.9) this.vx *= -1;
+                if (this.y < height * 0.1 || this.y > height * 0.9) this.vy *= -1;
+
+                // 柔和的透明度呼吸效果
+                const breath = Math.sin(Date.now() * this.breathSpeed + this.breathOffset);
+                this.alpha = (breath * 0.5 + 0.5) * this.maxAlpha;
+
+                // 轻微的大小波动
+                const sizeBreath = Math.sin(Date.now() * this.sizeBreathSpeed + this.breathOffset);
+                this.size = this.baseSize + sizeBreath * this.sizeBreathAmount;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+
+                // 柔和的径向渐变
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.4, `hsla(220, 15%, 75%, 0.3)`);
+                gradient.addColorStop(1, 'rgba(200, 210, 230, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        /**
+         * 初始化画布和粒子
+         */
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+
+            // 初始化烟雾光圈 - 随机3-5个柔和光晕
+            smokeParticles = [];
+            const smokeCount = Math.floor(Math.random() * 3) + 3; // 3-5个光圈
+            for (let i = 0; i < smokeCount; i++) {
+                smokeParticles.push(new Smoke());
+            }
+
+            // 预创建离屏canvas，避免每次都创建
+            if (!offScreenCanvas) {
+                offScreenCanvas = document.createElement('canvas');
+                offScreenCtx = offScreenCanvas.getContext('2d', { willReadFrequently: true });
+            }
+            offScreenCanvas.width = width;
+            offScreenCanvas.height = height;
+
+            handleTextChange();
+        }
+
+        /**
+         * 将十六进制颜色转换为RGB值
+         */
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 140, g: 163, b: 163 };
+        }
+
+        /**
+         * FIX: 改进的哈希函数 - 更稳定的色彩生成
+         */
+        function stringToColor(str) {
+            let hash = 0;
+            if (str.length === 0) return defaultPalette[0];
+
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                // 防止整数溢出
+                hash = hash & hash;
+            }
+
+            const index = Math.abs(hash) % defaultPalette.length;
+            return defaultPalette[index];
+        }
+
+        /**
+         * 处理文字和颜色更新
+         */
+        function handleTextChange() {
+            const text = textInput.value;
+            let finalColor;
+
+            if (isUserColorSet) {
+                finalColor = colorInput.value;
+                colorStatus.textContent = "使用自定义颜色";
+            } else {
+                finalColor = stringToColor(text);
+                colorInput.value = finalColor;
+                colorStatus.textContent = "随姓名生成 (可自选)";
+            }
+
+            createTextParticles(text, finalColor);
+        }
+
+        /**
+         * 检测是否为emoji
+         */
+        function isEmoji(char) {
+            if (!char || char.length === 0) return false;
+            const code = char.codePointAt(0);
+            if (!code) return false;
+            // Emoji Unicode范围
+            return (code >= 0x1F300 && code <= 0x1F9FF) ||
+                   (code >= 0x2600 && code <= 0x26FF) ||
+                   (code >= 0x2700 && code <= 0x27BF) ||
+                   (code >= 0x1F600 && code <= 0x1F64F) ||
+                   (code >= 0x1F680 && code <= 0x1F6FF) ||
+                   (code >= 0x1F1E0 && code <= 0x1F1FF) ||
+                   (code >= 0x231A && code <= 0x231B) ||
+                   (code >= 0x23E9 && code <= 0x23FA) ||
+                   (code >= 0x25AA && code <= 0x25AB) ||
+                   (code >= 0x25B6 && code <= 0x25B6) ||
+                   (code >= 0x25C0 && code <= 0x25C0) ||
+                   (code >= 0x25FB && code <= 0x25FE) ||
+                   (code >= 0x2614 && code <= 0x2615) ||
+                   (code >= 0x2648 && code <= 0x2653) ||
+                   (code >= 0x267F && code <= 0x267F) ||
+                   (code >= 0x2693 && code <= 0x2693) ||
+                   (code >= 0x26A1 && code <= 0x26A1) ||
+                   (code >= 0x26AA && code <= 0x26AB) ||
+                   (code >= 0x26BD && code <= 0x26BE) ||
+                   (code >= 0x26C4 && code <= 0x26C5) ||
+                   (code >= 0x26CE && code <= 0x26CE) ||
+                   (code >= 0x26D4 && code <= 0x26D4) ||
+                   (code >= 0x26EA && code <= 0x26EA) ||
+                   (code >= 0x26F2 && code <= 0x26F3) ||
+                   (code >= 0x26F5 && code <= 0x26F5) ||
+                   (code >= 0x26FA && code <= 0x26FA) ||
+                   (code >= 0x26FD && code <= 0x26FD) ||
+                   (code >= 0x2702 && code <= 0x2702) ||
+                   (code >= 0x2705 && code <= 0x2705) ||
+                   (code >= 0x2708 && code <= 0x270D) ||
+                   (code >= 0x270F && code <= 0x270F) ||
+                   (code >= 0x2712 && code <= 0x2712) ||
+                   (code >= 0x2714 && code <= 0x2714) ||
+                   (code >= 0x2716 && code <= 0x2716) ||
+                   (code >= 0x271D && code <= 0x271D) ||
+                   (code >= 0x2744 && code <= 0x2744) ||
+                   (code >= 0x2747 && code <= 0x2747) ||
+                   (code >= 0x274C && code <= 0x274C) ||
+                   (code >= 0x274E && code <= 0x274E) ||
+                   (code >= 0x2753 && code <= 0x2755) ||
+                   (code >= 0x2757 && code <= 0x2757) ||
+                   (code >= 0x2763 && code <= 0x2764) ||
+                   (code >= 0x2795 && code <= 0x2797) ||
+                   (code >= 0x27A1 && code <= 0x27A1) ||
+                   (code >= 0x27B0 && code <= 0x27B0) ||
+                   (code >= 0x27BF && code <= 0x27BF) ||
+                   (code >= 0x2934 && code <= 0x2935) ||
+                   (code >= 0x2B05 && code <= 0x2B07) ||
+                   (code >= 0x2B1B && code <= 0x2B1C) ||
+                   (code >= 0x2B50 && code <= 0x2B50) ||
+                   (code >= 0x2B55 && code <= 0x2B55) ||
+                   (code >= 0x3030 && code <= 0x3030) ||
+                   (code >= 0x303D && code <= 0x303D) ||
+                   (code >= 0x3297 && code <= 0x3297) ||
+                   (code >= 0x3299 && code <= 0x3299);
+        }
+
+        /**
+         * 根据文字创建粒子
+         */
+        function createTextParticles(text, color) {
+            if (!text) text = " ";
+
+            // 清空离屏canvas
+            offScreenCtx.clearRect(0, 0, offScreenCanvas.width, offScreenCanvas.height);
+
+            const chars = Array.from(text);
+            const charCount = text.length;
+
+            // 检测是否有emoji
+            const hasEmoji = chars.some(c => isEmoji(c));
+
+            // 计算字体大小 - 保证文字不被压缩
+            let fontSize;
+            if (hasEmoji) {
+                fontSize = Math.max(48, Math.min(100, width / charCount * 0.9));
+            } else {
+                fontSize = Math.max(48, Math.min(140, width / charCount * 1.0));
+            }
+
+            // 测量每个字符的位置 - emoji使用系统字体
+            const fontFamily = hasEmoji ? '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Microsoft YaHei"' : '"PingFang SC", "Microsoft YaHei", sans-serif';
+            offScreenCtx.font = `bold ${fontSize}px ${fontFamily}`;
+            offScreenCtx.textAlign = 'left';
+            offScreenCtx.textBaseline = 'middle';
+
+            const charPositions = [];
+            let totalWidth = 0;
+            for (let i = 0; i < chars.length; i++) {
+                const char = chars[i];
+                const isEmojiChar = isEmoji(char);
+                const metrics = offScreenCtx.measureText(char);
+                charPositions.push({
+                    char: char,
+                    width: isEmojiChar ? fontSize : metrics.width,
+                    isEmoji: isEmojiChar,
+                    colorGroups: null
+                });
+                totalWidth += charPositions[i].width;
+            }
+
+            // 居中起始位置
+            const startX = (width - totalWidth) / 2;
+            let currentX = startX;
+
+            // 清空并重绘
+            offScreenCtx.fillStyle = 'white';
+
+            // emoji字体
+            const emojiFont = `bold ${fontSize}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Microsoft YaHei"`;
+
+            // 先绘制所有字符
+            for (let i = 0; i < charPositions.length; i++) {
+                const cp = charPositions[i];
+                const centerX = currentX + cp.width / 2;
+                const centerY = height / 2;
+
+                offScreenCtx.textAlign = 'center';
+                // emoji使用专用字体
+                if (cp.isEmoji) {
+                    offScreenCtx.font = emojiFont;
+                }
+                offScreenCtx.fillText(cp.char, centerX, centerY);
+
+                currentX += cp.width + fontSize * 0.08;
+            }
+
+            // 绘制完成后再获取图像数据
+            const imageData = offScreenCtx.getImageData(0, 0, width, height).data;
+            const newTargets = [];
+
+            // 采样步长
+            const sampleStep = hasEmoji ? 3 : 5;
+
+            // 重新遍历每个字符位置进行采样
+            currentX = startX;
+            for (let i = 0; i < charPositions.length; i++) {
+                const cp = charPositions[i];
+                const centerX = currentX + cp.width / 2;
+                const centerY = height / 2;
+
+                // 采样区域
+                const charStartX = centerX - cp.width / 2;
+                const charEndX = centerX + cp.width / 2;
+                const charStartY = centerY - fontSize / 2;
+                const charEndY = centerY + fontSize / 2;
+
+                for (let y = charStartY; y < charEndY; y += sampleStep) {
+                    for (let x = charStartX; x < charEndX; x += sampleStep) {
+                        const ix = Math.floor(x);
+                        const iy = Math.floor(y);
+                        if (ix >= 0 && ix < width && iy >= 0 && iy < height) {
+                            const index = (iy * width + ix) * 4;
+                            const alpha = imageData[index + 3];
+
+                            if (alpha > 128) {
+                                if (cp.isEmoji) {
+                                    // Emoji：使用实际像素颜色
+                                    const r = imageData[index];
+                                    const g = imageData[index + 1];
+                                    const b = imageData[index + 2];
+                                    if (!(r > 250 && g > 250 && b > 250)) {
+                                        newTargets.push({ x: ix, y: iy, color: `rgb(${r},${g},${b})` });
+                                    }
+                                } else {
+                                    // 普通文字：使用指定颜色
+                                    newTargets.push({ x: ix, y: iy, color: color });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                currentX += cp.width + fontSize * 0.08;
+            }
+
+            // 粒子更新逻辑
+            const maxLen = Math.max(particles.length, newTargets.length);
+
+            for (let i = 0; i < maxLen; i++) {
+                if (i < newTargets.length) {
+                    if (i < particles.length) {
+                        particles[i].baseX = newTargets[i].x + (Math.random() - 0.5) * 3;
+                        particles[i].baseY = newTargets[i].y + (Math.random() - 0.5) * 3;
+                        particles[i].color = newTargets[i].color || color;
+                        particles[i].isAggregating = true;
+                        particles[i].aggregationStartTime = Date.now();
+                        particles[i].aggregationDuration = Math.random() * 600 + 300;
+
+                        const angle = Math.random() * Math.PI * 2;
+                        const distance = Math.random() * 150 + 80;
+                        particles[i].x = width / 2 + Math.cos(angle) * distance;
+                        particles[i].y = height / 2 + Math.sin(angle) * distance;
+                    } else {
+                        const newParticle = new Particle(newTargets[i].x, newTargets[i].y, newTargets[i].color || color);
+                        newParticle.isAggregating = true;
+                        particles.push(newParticle);
+                    }
+                } else {
+                    particles.splice(newTargets.length);
+                    break;
+                }
+            }
+
+            particleCountDisplay.textContent = particles.length;
+        }
+
+        /**
+         * 动画主循环
+         */
+        function animate() {
+            // 背景层 - 更简洁的透明度
+            ctx.fillStyle = 'rgba(8, 10, 16, 0.25)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 绘制烟雾层
+            for (let i = 0; i < smokeParticles.length; i++) {
+                smokeParticles[i].update();
+                smokeParticles[i].draw();
+            }
+
+            // 绘制文字粒子层
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+                particles[i].draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // ===== 事件监听 =====
+        window.addEventListener('resize', init);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.x = -1000;
+            mouse.y = -1000;
+        });
+
+        // 触屏支持
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouse.x = touch.clientX;
+            mouse.y = touch.clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            mouse.x = -1000;
+            mouse.y = -1000;
+        });
+
+        // 文字输入事件
+        textInput.addEventListener('input', () => {
+            handleTextChange();
+        });
+
+        // 颜色选择器事件 - 自定义颜色只在当前生效
+        colorInput.addEventListener('input', () => {
+            isUserColorSet = true;
+            handleTextChange();
+        });
+
+        // 文字输入时重置为根据名字生成颜色
+        textInput.addEventListener('input', () => {
+            isUserColorSet = false;
+            handleTextChange();
+        });
+
+        // 点击输入框时如果文字是默认提示，重置颜色
+        textInput.addEventListener('focus', () => {
+            if (textInput.value === "您的名字" || textInput.value === "") {
+                isUserColorSet = false;
+            }
+        });
+
+        // ===== 音频控制 =====
+        const bgMusic = document.getElementById('bgMusic');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const volumeValue = document.getElementById('volumeValue');
+        const musicToggle = document.getElementById('musicToggle');
+
+        // 初始化音频 - 使用本地下载的钢琴曲
+        bgMusic.src = './bgm.mp3';
+        bgMusic.volume = 0.3;
+        bgMusic.crossOrigin = 'anonymous';
+
+        // 音乐播放状态
+        let musicPlaying = false;
+
+        // 音乐切换按钮
+        musicToggle.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!musicPlaying) {
+                try {
+                    await bgMusic.play();
+                    musicPlaying = true;
+                    musicToggle.textContent = '🔊 音乐ON';
+                    musicToggle.style.background = 'rgba(100, 200, 150, 0.2)';
+                } catch (err) {
+                    console.warn('播放失败:', err);
+                    musicToggle.textContent = '❌ 播放失败';
+                }
+            } else {
+                bgMusic.pause();
+                musicPlaying = false;
+                musicToggle.textContent = '🔇 音乐OFF';
+                musicToggle.style.background = 'rgba(255,255,255,0.1)';
+            }
+        });
+
+        // 加载状态检测
+        bgMusic.addEventListener('canplay', () => {
+            console.log('✓ 音乐已加载');
+        });
+
+        bgMusic.addEventListener('error', (e) => {
+            console.warn('⚠️ 音乐文件加载失败，请检查 bgm.mp3 是否存在');
+            musicToggle.textContent = '❌ 文件未找到';
+        });
+
+        // 音量控制
+        volumeSlider.addEventListener('input', (e) => {
+            const volume = e.target.value / 100;
+            bgMusic.volume = volume;
+            volumeValue.textContent = e.target.value + '%';
+        });
+
+        // 显示通知
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // 启动程序
+        init();
+        animate();
+
+        // 显示就绪通知
+        setTimeout(() => showNotification('✅ 页面已就绪，输入文字查看粒子效果'), 500);
+
+    </script>
+</body>
+</html>
