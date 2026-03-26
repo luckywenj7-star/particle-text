@@ -600,23 +600,24 @@
             offScreenCtx.clearRect(0, 0, offScreenCanvas.width, offScreenCanvas.height);
 
             const chars = Array.from(text);
-            const charCount = chars.length; // 使用实际字符数量而非UTF-16长度
+            const charCount = chars.length;
 
             // 检测是否有emoji
             const hasEmoji = chars.some(c => isEmoji(c));
 
-            // 检测手机端
-            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            // 检测手机端 - 更可靠的方式
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-            // 计算字体大小 - 手机端保证10个字符都能完整显示
+            // 计算字体大小 - 手机端根据字符数量等比例缩放
             let fontSize;
             if (hasEmoji) {
-                fontSize = Math.max(48, Math.min(80, width / charCount * 1.0));
+                fontSize = Math.max(40, Math.min(80, width / charCount * 1.2));
+            } else if (isMobile) {
+                // 手机端：字符越多字体越小，确保都能显示
+                fontSize = Math.max(40, Math.min(130, width / charCount * 2.0));
             } else {
-                // 手机端：确保最多10个字符完整显示
-                fontSize = isMobile
-                    ? Math.max(48, Math.min(120, width / Math.max(charCount, 10) * 2.5))
-                    : Math.max(48, Math.min(140, width / charCount * 1.0));
+                // 桌面端
+                fontSize = Math.max(48, Math.min(140, width / charCount * 1.0));
             }
 
             // 测量每个字符的位置 - emoji使用系统字体
@@ -842,35 +843,26 @@
         bgMusic.crossOrigin = 'anonymous';
         bgMusic.muted = false;
 
-        // 音乐播放状态
-        let musicPlaying = false;
-
-        // 音乐切换按钮 - 更稳定的实现
-        musicToggle.addEventListener('click', async (e) => {
+        // 音乐切换按钮 - 简化稳定版
+        musicToggle.addEventListener('click', (e) => {
             e.stopPropagation();
-            e.preventDefault();
 
-            if (!musicPlaying) {
-                // 播放
-                try {
-                    // 确保音量是最新的
-                    bgMusic.volume = volumeSlider.value / 100;
-                    // 如果音频已结束，重置到开头
-                    if (bgMusic.ended) {
-                        bgMusic.currentTime = 0;
-                    }
-                    await bgMusic.play();
-                    musicPlaying = true;
-                    musicToggle.textContent = '🔊 音乐ON';
-                    musicToggle.style.background = 'rgba(100, 200, 150, 0.2)';
-                } catch (err) {
-                    console.warn('播放失败:', err);
-                    musicToggle.textContent = '❌ 播放失败';
+            if (bgMusic.paused) {
+                // 播放（从当前位置继续）
+                bgMusic.volume = volumeSlider.value / 100;
+                const playPromise = bgMusic.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        musicToggle.textContent = '🔊 暂停';
+                        musicToggle.style.background = 'rgba(100, 200, 150, 0.2)';
+                    }).catch(err => {
+                        console.warn('播放失败:', err);
+                        musicToggle.textContent = '❌ 失败';
+                    });
                 }
             } else {
                 // 暂停（保持当前位置）
                 bgMusic.pause();
-                musicPlaying = false;
                 musicToggle.textContent = '🔇 继续';
                 musicToggle.style.background = 'rgba(255,255,255,0.1)';
             }
@@ -879,7 +871,7 @@
         // 加载状态检测
         bgMusic.addEventListener('canplay', () => {
             console.log('✓ 音乐已加载');
-            musicToggle.textContent = musicPlaying ? '🔊 音乐ON' : '🔇 启动音乐';
+            musicToggle.textContent = bgMusic.paused ? '🔇 启动音乐' : '🔊 暂停';
         });
 
         bgMusic.addEventListener('error', (e) => {
@@ -887,9 +879,9 @@
             musicToggle.textContent = '❌ 文件未找到';
         });
 
-        // 页面可见性变化时恢复音频（仅当确实在播放时）
+        // 页面可见性变化时恢复音频
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && musicPlaying && bgMusic.paused) {
+            if (!document.hidden && !bgMusic.paused) {
                 bgMusic.play().catch(() => {});
             }
         });
