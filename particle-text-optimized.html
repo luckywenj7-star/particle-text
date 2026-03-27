@@ -608,16 +608,18 @@
             // 检测手机端 - 更可靠的方式
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobi/i.test(navigator.userAgent) || window.innerWidth < 768;
 
-            // 计算字体大小 - 手机端根据字符数量等比例缩放
+            // 计算字体大小 - 根据字符总宽度确保全部显示
             let fontSize;
             if (hasEmoji) {
-                fontSize = Math.max(40, Math.min(80, width / charCount * 1.2));
+                fontSize = Math.max(36, Math.min(80, width * 0.85 / charCount));
             } else if (isMobile) {
-                // 手机端：字符越多字体越小，确保都能显示
-                fontSize = Math.max(40, Math.min(130, width / charCount * 2.0));
+                // 手机端：确保所有字符都能显示在屏幕内
+                // 中文字符宽度约等于字体大小 * 0.7，加上间距
+                fontSize = Math.min(120, width * 0.8 / charCount);
+                fontSize = Math.max(32, fontSize); // 最少32px
             } else {
                 // 桌面端
-                fontSize = Math.max(48, Math.min(140, width / charCount * 1.0));
+                fontSize = Math.max(48, Math.min(140, width * 0.7 / charCount));
             }
 
             // 测量每个字符的位置 - emoji使用系统字体
